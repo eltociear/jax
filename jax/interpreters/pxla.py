@@ -1627,9 +1627,12 @@ class PmapExecutable(stages.XlaExecutable):
     handle_outs = local_avals_to_results_handler(local_unmapped_avals, out_shardings)
 
     if hasattr(pci.backend, "compile_replicated"):
+      # Use the standard out_handler.
       execute_fun = pci.backend.compile_replicated(
           xla_computation, compile_options, host_callbacks, pci.avals,
-          input_indices, in_shardings, InputsHandlerMode.pmap, handle_outs)
+          input_indices, in_shardings, InputsHandlerMode.pmap,
+          out_handler=handle_outs, global_out_avals=None, out_shardings=None,
+          committed=None)
       # TODO(frostig): need `compile_replicated` to give us the XLA executable
       return PmapExecutable(None, execute_fun, None, pci.avals)
 
@@ -1862,7 +1865,8 @@ def _get_sharding_specs(
             for aval, s in safe_zip(avals, shardings)]
   else:
     raise ValueError('Getting sharding spec is only supported for '
-                     'PmapSharding and MeshPspecSharding.')
+                     'PmapSharding and MeshPspecSharding, '
+                     f'but got {shardings}.')
 
 def local_avals_to_results_handler(
     unmapped_local_out_avals: Sequence[ShapedArray],
@@ -3315,13 +3319,12 @@ class MeshExecutable(stages.XlaExecutable):
       in_shardings, input_indices, input_avals = _get_input_metadata(
           global_in_avals, in_shardings, in_is_global)  # type: ignore
       are_out_shardings_from_xla: Sequence[bool] = [False] * len(global_out_avals)
-      handle_outs = global_avals_to_results_handler(
-          global_out_avals, out_shardings, committed, are_out_shardings_from_xla)  # type: ignore  # arg-type
-      unsafe_call = backend.compile_replicated(computation, compile_options,
-                                               host_callbacks, input_avals,
-                                               input_indices, in_shardings,
-                                               InputsHandlerMode.pjit_or_xmap,
-                                               handle_outs)
+      # Will compute out_handler with executable information.
+      unsafe_call = backend.compile_replicated(
+          computation, compile_options, host_callbacks, input_avals,
+          input_indices, in_shardings, InputsHandlerMode.pjit_or_xmap,
+          out_handler=None, global_out_avals=global_out_avals,
+          out_shardings=out_shardings, committed=committed)
       xla_executable = None
     else:
       with dispatch.log_elapsed_time(f"Finished XLA compilation of {name} "
