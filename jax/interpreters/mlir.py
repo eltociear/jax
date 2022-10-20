@@ -35,7 +35,7 @@ from jax import linear_util as lu
 from jax._src import ad_util
 from jax._src import device_array
 from jax._src import dtypes
-from jax._src.lib import mlir_api_version
+from jax._src.lib import mlir_api_version, xla_extension_version
 from jax._src.lib import version as jaxlib_version
 from jax._src.lib.mlir import ir
 from jax._src.lib.mlir.dialects import chlo
@@ -609,7 +609,10 @@ def lower_jaxpr_to_module(
         out_aval, = out_aval.dtype._rules.physical_avals(out_aval)
       out_avals.append(sharded_aval(out_aval, out_sharding))
 
-  platforms_with_donation = ("cuda", "rocm", "tpu")
+  if xla_extension_version >= 100:
+    platforms_with_donation = ("cuda", "rocm", "tpu", "cpu")
+  else:
+    platforms_with_donation = ("cuda", "rocm", "tpu")
   if platform in platforms_with_donation:
     input_output_aliases, donated_args = _set_up_aliases(
         in_avals, out_avals, donated_args)
