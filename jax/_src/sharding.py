@@ -298,6 +298,17 @@ class SingleDeviceSharding(XLACompatibleSharding):
     return _get_replicated_op_sharding()
 
 
+
+def _pmap_device_order():
+  # match the default device assignments used in pmap:
+  # for single-host, that's the XLA default device assignment
+  # for multi-host, it's the order of jax.local_devices()
+  if jax.process_count() == 1:
+    return xb.get_backend().get_default_device_assignment(jax.device_count())
+  else:
+    return jax.local_devices()
+
+
 @pxla.use_cpp_class(xc.PmapSharding if xc._version >= 94 else None)
 class PmapSharding(XLACompatibleSharding):
 
@@ -319,6 +330,19 @@ class PmapSharding(XLACompatibleSharding):
     if not hasattr(self, '_hash'):
       self._hash = hash((tuple(self.devices.flat), self.sharding_spec))
     return self._hash
+
+  # TODO(yashkatariya): Expose `sharded_dim` and `sharded_dim_size` in the API
+  # if required.
+  @classmethod
+  def default(cls, shape):
+    """Creates a `PmapSharding` which matches the implicit device order used by
+    `pmap`.
+    """
+    # The dtype doesn't matter here. Its only used for creating the
+    # sharding_spec.
+    aval = jax.ShapedArray(shape, np.int32)
+    sharding_spec = pxla._create_pmap_sharding_spec(aval)
+    return cls(_pmap_device_order(), sharding_spec)
 
   @pxla.maybe_cached_property
   def device_set(self) -> Set[Device]:

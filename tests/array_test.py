@@ -742,6 +742,13 @@ class ShardingTest(jtu.JaxTestCase):
                      devices_sharding.shard_shape(value_shape))
     self.assertTrue(pxla.are_op_shardings_equal(op1, op2))
 
+  def test_default_pmap_sharding(self):
+    ps = sharding.PmapSharding.default((8, 2))
+    pmap_out = jax.pmap(lambda x: x)(jnp.arange(16).reshape(8, 2))
+    self.assertEqual(ps._device_assignment,
+                     pmap_out.sharding._device_assignment)
+    self.assertEqual(ps.sharding_spec, pmap_out.sharding.sharding_spec)
+
 
 if __name__ == '__main__':
   absltest.main(testLoader=jtu.JaxTestLoader())
