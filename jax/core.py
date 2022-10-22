@@ -2055,7 +2055,9 @@ class MapPrimitive(Primitive):
     new_params['out_axes_thunk'] = HashableFunction(lambda: axes, closure=axes)
     return [subfun], new_params
 
-def map_bind(primitive: MapPrimitive, fun, *args, out_axes_thunk, **params):
+
+def map_bind_with_continuation(primitive: MapPrimitive, fun, *args,
+                               out_axes_thunk, **params):
   # The new thunk depends deterministically on the old thunk and the wrapped
   # function. Any caching already has to include the wrapped function as part
   # of the key, so we only use the previous thunk for equality checks.
@@ -2071,9 +2073,19 @@ def map_bind(primitive: MapPrimitive, fun, *args, out_axes_thunk, **params):
   fun, todo_and_xforms = process_env_traces_map(
       fun, primitive, top_trace and top_trace.level, tuple(params.items()))
   tracers = map(top_trace.full_raise, args)
-  outs = primitive.process(top_trace, fun, tracers, params)
-  env_trace_todo, _ = todo_and_xforms()
-  return map(full_lower, apply_todos(env_trace_todo, outs))
+
+  def map_bind_continuation(outs):
+    env_trace_todo, _ = todo_and_xforms()
+    return map(full_lower, apply_todos(env_trace_todo, outs))
+
+  return map_bind_continuation, top_trace, fun, tracers, params
+
+
+def map_bind(primitive: MapPrimitive, fun, *args, **params):
+  map_bind_continuation, top_trace, fun, tracers, params = (
+      map_bind_with_continuation(primitive, fun, *args, **params))
+  return map_bind_continuation(
+      primitive.process(top_trace, fun, tracers, params))
 
 @lu.transformation_with_aux
 def process_env_traces_map(primitive: MapPrimitive, level: int,
